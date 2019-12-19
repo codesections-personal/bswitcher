@@ -37,8 +37,20 @@ order does not change the `$line_number` available in the FORMAT_STRING.  If you
 the line number after reversal, you can do so with $(($number_of_nodes - line_number))"))
         .arg(Arg::with_name("DMENU_ARGS").short('d').long("dmenu-args").default_value("-p 'Switch to: ' -l 30 -b -i")
              .help("Arguments to pass to dmenu in place of the default arguments; see dmenu(1) for \
-the effects of these arguments"))
-        .get_matches();
+the effects of these arguments"))        
+        .arg(Arg::with_name("PIPE").short('p').long("pipe").takes_value(true)
+             .help("Uses the provided pipe to modify the formatted title."))
+        .after_help(r#"EXAMPLES:
+    Use defaults:
+        $ bswitcher
+    
+    Recreate `dswitcher` menu:
+        $ bswitcher -f='$((line_number + 1)) - $xtitle' -d='-p "$(date)" -l 30 -b -i' -s creation
+    
+    Display "Firefox" before tab title (instead of after, as in the xtitle):
+        $ bswitcher --format-string '$xtitle' --pipe 'sed -E "s_(.*) - Mozilla (Firefox)_\2 | \1_"'
+"#)
+.get_matches();
 
     let sort_order = SortOrder::from_str(cli.value_of("SORT_ORDER").unwrap()).unwrap();
     let format_string = cli.value_of("FORMAT_STRING").expect("default");
@@ -46,7 +58,9 @@ the effects of these arguments"))
     let nodes: Vec<String> = get_nodes_from_bspwm_history();
 
     use SortOrder::*;
+    let pipe = cli.value_of("PIPE");
     let (_, xtitles, _) = run_script!(format!("xtitle {}", nodes.join(" "))).unwrap();
+    let number_of_nodes = xtitles.lines().count();
     let mut title_node_pairs: Vec<(String, String)> = xtitles
         .lines()
         .zip(nodes.iter())
@@ -59,7 +73,7 @@ the effects of these arguments"))
             },
         )
         .enumerate()
-        .map(|numbered_pair| format_xtitle(numbered_pair, format_string, xtitles.lines().count()))
+        .map(|numbered_pair| format_xtitle(numbered_pair, format_string, number_of_nodes, pipe))
         .collect();
     if let FocusHistory = sort_order {
         let first = title_node_pairs.remove(0);
@@ -100,17 +114,25 @@ fn format_xtitle(
     (i, (xtitle, node_id)): (usize, (&str, &String)),
     format_string: &str,
     number_of_nodes: usize,
+    pipe: Option<&str>,
 ) -> (String, String) {
     let line_number = i.to_string();
-    let (_, title, _) = run_script!(format!(
+    let mut format_cmd = format!(
         r#"
 line_number='{}'
 xtitle='{}'
 number_of_nodes='{}'
 echo "{}""#,
         line_number, xtitle, number_of_nodes, format_string
-    ))
-    .unwrap();
+    );
+    if let Some(pipe) = pipe {
+        format_cmd.push_str(&format!("| {}", pipe));
+    }
+    let (code, title, err) = run_script!(format_cmd).unwrap();
+    if code != 0 {
+        eprintln!("format_xtitle: {}", err);
+        std::process::exit(2);
+    }
 
     (title, node_id.to_string())
 }
