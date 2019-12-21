@@ -117,6 +117,7 @@ fn format_xtitle(
     pipe: Option<&str>,
 ) -> (String, String) {
     let line_number = i.to_string();
+    let xtitle = xtitle.replace("'", "’");
     let mut format_cmd = format!(
         r#"
 line_number='{}'
@@ -133,6 +134,5 @@ echo "{}""#,
         eprintln!("format_xtitle: {}", err);
         std::process::exit(2);
     }
-
     (title, node_id.to_string())
 }
