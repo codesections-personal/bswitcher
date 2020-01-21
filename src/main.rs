@@ -16,8 +16,8 @@ enum SortOrder {
 
 fn main() {
     let cli = App::new(crate_name!())
-        .author(crate_authors!())
         .version(crate_version!())
+        .about("Interactively select a bspwm node (using dmenu) and focus that node (using bspc).")
         .arg(Arg::with_name("FORMAT_STRING").short('f').long("format-string").default_value("$line_number - $xtitle")
              .help( "The format string to use when printing the title.  The format string will be \
 expanded with normal shell expansions.  The format string has access to three special variables: \
@@ -40,7 +40,7 @@ the line number after reversal, you can do so with $(($number_of_nodes - line_nu
 the effects of these arguments"))        
         .arg(Arg::with_name("PIPE").short('p').long("pipe").takes_value(true)
              .help("Uses the provided pipe to modify the formatted title."))
-        .after_help(r#"EXAMPLES:
+        .after_help(&*format!(r#"EXAMPLES:
     Use defaults:
         $ bswitcher
     
@@ -49,8 +49,22 @@ the effects of these arguments"))
     
     Display "Firefox" before tab title (instead of after, as in the xtitle):
         $ bswitcher --format-string '$xtitle' --pipe 'sed -E "s_(.*) - Mozilla (Firefox)_\2 | \1_"'
-"#)
-.get_matches();
+
+BUGS:
+    Please report bugs to {}
+"#, crate_authors!()))
+    .get_matches();
+
+    for program in &["xtitle", "dmenu", "bspc", "echo"] {
+        let (code, _, _) = run_script!(format!("which {}", program)).expect("which cmd");
+        if code != 0 {
+            eprintln!(
+                "{program} not found in $PATH.  Please install {program} before using bswitcher.",
+                program = program
+            );
+            std::process::exit(1);
+        }
+    }
 
     let sort_order = SortOrder::from_str(cli.value_of("SORT_ORDER").unwrap()).unwrap();
     let format_string = cli.value_of("FORMAT_STRING").expect("default");
@@ -117,7 +131,7 @@ fn format_xtitle(
     pipe: Option<&str>,
 ) -> (String, String) {
     let line_number = i.to_string();
-    let xtitle = xtitle.replace("'", "’");
+    let xtitle = xtitle.replace("'", "’"); // avoid ending the bash string
     let mut format_cmd = format!(
         r#"
 line_number='{}'
